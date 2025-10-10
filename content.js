@@ -29,7 +29,6 @@
     /* 2. 단순 인용구 스타일 (주황색, 중앙 정렬) */
     .quote-message { display: block !important; text-align: center; color: #FFA500; font-weight: 500; margin: 16px auto !important; max-width: 90%; box-sizing: border-box; }
     
-    /* ★★★ [추가] 대화문 스타일 ★★★ */
     .dialogue-message {
       display: block !important;
       text-align: center;
@@ -111,4 +110,5 @@
   document.body.addEventListener('click', (event) => { /* ... 이전과 동일 ... */ const runButton = event.target.closest('ms-run-button button[type="submit"]'); if (runButton && !runButton.disabled) { document.querySelectorAll('.custom-thought-accordion.complete').forEach(header => { const wrapper = header.closest('.thought-wrapper'); if (wrapper) wrapper.remove(); }); } }, true);
 
   console.log("Reppley 1.0 Start");
+
 })();
