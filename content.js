@@ -1530,19 +1530,48 @@ function createAdvancedPersonaUI() {
 
   function processThoughtChunk(chunk) { if (chunk.dataset.processed) return; chunk.dataset.processed = 'true'; const panel = chunk.querySelector('.mat-expansion-panel'); const originalHeader = chunk.querySelector('.mat-expansion-panel-header'); const contentWrapper = chunk.querySelector('.mat-expansion-panel-content-wrapper'); if (!panel || !originalHeader || !contentWrapper) return; const wrapper = document.createElement('div'); wrapper.className = 'thought-wrapper'; chunk.parentNode.insertBefore(wrapper, chunk); const customHeader = document.createElement('div'); customHeader.className = 'custom-thought-accordion thinking'; customHeader.innerHTML = `<span class="material-symbols-outlined icon"></span><span class="text">생각 중</span><span class="material-symbols-outlined chevron">expand_more</span>`; wrapper.appendChild(customHeader); wrapper.appendChild(chunk); customHeader.addEventListener('click', () => originalHeader.click()); const statusObserver = new MutationObserver(() => { const inProgressIcon = chunk.querySelector('.thinking-progress-icon.in-progress'); if (!inProgressIcon && customHeader.classList.contains('thinking')) { customHeader.classList.remove('thinking'); customHeader.classList.add('complete'); customHeader.querySelector('.icon').textContent = 'check_circle'; customHeader.querySelector('.text').textContent = '생각 완료'; } const isExpanded = panel.classList.contains('mat-expanded'); customHeader.classList.toggle('expanded', isExpanded); contentWrapper.classList.toggle('expanded', isExpanded); }); statusObserver.observe(panel, { attributes: true, subtree: true, attributeFilter: ['class'] }); }
   
-  function processChatTurn(turn) {
+function processChatTurn(turn) {
     const transformParagraphs = (container) => {
-      container.querySelectorAll('p:not([data-processed="true"])').forEach(p => {
-        p.dataset.processed = 'true';
+      // 'data-processed' 확인 없이 모든 'p' 태그를 대상으로 서식을 검사하고 적용합니다.
+      // 서식이 적용된 p 태그는 div로 대체되므로, 다음 실행 시에는 다시 처리되지 않아 중복 적용이 방지됩니다.
+      container.querySelectorAll('p').forEach(p => {
         const textContent = p.textContent.trim();
-        if (p.querySelector('span[style*="font-style: italic"]')) { const box = document.createElement('div'); box.className = 'narration-message'; box.textContent = textContent; p.replaceWith(box); return; }
+        
+        // 지문/나레이션 (기울임꼴)
+        if (p.querySelector('span[style*="font-style: italic"]')) {
+          const box = document.createElement('div');
+          box.className = 'narration-message';
+          box.textContent = textContent;
+          p.replaceWith(box);
+          return; // 다음 p 태그로 넘어갑니다.
+        }
+
+        // 대화 (이름: "대사")
         const dialogueMatch = textContent.match(/^([^:]+):\s*"([^"]+)"$/);
-        if (dialogueMatch) { const box = document.createElement('div'); box.className = 'dialogue-message'; box.innerHTML = `<span class="speaker-name">${dialogueMatch[1].trim()}:</span><span class="speaker-quote">"${dialogueMatch[2]}"</span>`; p.replaceWith(box); return; }
-        if (textContent.startsWith('"') && textContent.endsWith('"')) { const box = document.createElement('div'); box.className = 'quote-message'; box.textContent = textContent; p.replaceWith(box); }
+        if (dialogueMatch) {
+          const box = document.createElement('div');
+          box.className = 'dialogue-message';
+          box.innerHTML = `<span class="speaker-name">${dialogueMatch[1].trim()}:</span><span class="speaker-quote">"${dialogueMatch[2]}"</span>`;
+          p.replaceWith(box);
+          return; // 다음 p 태그로 넘어갑니다.
+        }
+
+        // 인용문 ("인용")
+        if (textContent.startsWith('"') && textContent.endsWith('"')) {
+          const box = document.createElement('div');
+          box.className = 'quote-message';
+          box.textContent = textContent;
+          p.replaceWith(box);
+        }
       });
     };
+
+    // MutationObserver를 사용하여 ms-chat-turn 내부의 변경(자식 노드 추가/제거 등)을 감지하고
+    // 변경이 발생할 때마다 transformParagraphs 함수를 다시 실행하여 서식을 새로고침합니다.
     const observer = new MutationObserver(() => transformParagraphs(turn));
     observer.observe(turn, { childList: true, subtree: true });
+    
+    // 함수가 처음 호출되었을 때도 서식을 즉시 적용합니다.
     transformParagraphs(turn);
   }
 
