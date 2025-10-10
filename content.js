@@ -487,6 +487,12 @@
         background-color: #f28b82;
         color: #202124;
     }
+.reppley-persona-modal-body {
+  max-height: 70vh; /* 원하는 높이로 조절 가능 */
+  overflow-y: auto;
+  padding-right: 8px; /* 스크롤바 공간 확보 */
+}
+
   `;
 
   const styleSheet = document.createElement("style");
@@ -624,23 +630,180 @@ Rules:
     if(saveBtn) saveBtn.addEventListener('click', () => { saveNote(textarea.value); debouncedApplyAllInstructions(); modal.style.display = 'none'; alert('유저 노트가 저장되었습니다.'); });
   }
 
-  function createAdvancedPersonaUI() {
-    if (document.getElementById('reppley-persona-modal')) return;
-    const modalHTML = `<div id="reppley-persona-modal" class="reppley-persona-modal-overlay"><div class="reppley-persona-modal-panel"><div id="reppley-persona-list-view" class="reppley-persona-view active"><div class="reppley-persona-modal-header"><div class="title"><span class="material-symbols-outlined back-btn" style="opacity:0; pointer-events:none;">arrow_back</span>페르소나 설정</div><div id="reppley-show-editor-btn" class="new-persona-btn">+ 새로운 페르소나</div></div><div class="reppley-persona-modal-body"><div class="reppley-persona-section-title">현재 사용 중</div><div id="reppley-active-persona-container"></div><div class="reppley-persona-section-title" style="margin-top: 24px;">다른 페르소나</div><div id="reppley-other-personas-container"></div></div></div><div id="reppley-persona-editor-view" class="reppley-persona-view"><div class="reppley-persona-modal-header"><div class="title"><span id="reppley-back-to-list-btn" class="material-symbols-outlined back-btn">arrow_back</span><span id="reppley-editor-title"></span></div></div><div class="reppley-persona-modal-body"><form id="reppley-persona-editor-form"><input type="hidden" id="reppley-persona-id-input" /><div class="reppley-persona-input-group"><label for="reppley-persona-name-input">이름</label><input id="reppley-persona-name-input" type="text" maxlength="50" required /><div class="char-counter" id="reppley-name-char-counter"></div></div><div class="reppley-persona-input-group"><label for="reppley-persona-desc-input">설명</label><textarea id="reppley-persona-desc-input" maxlength="4000" required></textarea><div class="char-counter" id="reppley-desc-char-counter"></div></div><button type="submit" id="reppley-persona-save-edit-btn"></button></form></div></div></div></div>`;
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    const modal = document.getElementById('reppley-persona-modal'); if (!modal) return;
-    const listView = document.getElementById('reppley-persona-list-view'), editorView = document.getElementById('reppley-persona-editor-view'), showEditorBtn = document.getElementById('reppley-show-editor-btn'), backToListBtn = document.getElementById('reppley-back-to-list-btn'), form = document.getElementById('reppley-persona-editor-form'), idInput = document.getElementById('reppley-persona-id-input'), nameInput = document.getElementById('reppley-persona-name-input'), descInput = document.getElementById('reppley-persona-desc-input'), editorTitle = document.getElementById('reppley-editor-title'), saveBtn = document.getElementById('reppley-persona-save-edit-btn'), nameCounter = document.getElementById('reppley-name-char-counter'), descCounter = document.getElementById('reppley-desc-char-counter'), modalBody = modal.querySelector('.reppley-persona-modal-body');
-    const showListView = () => { if(listView) listView.classList.add('active'); if(editorView) editorView.classList.remove('active'); renderPersonaList(); };
-    const showEditorView = (persona = null) => { if(listView) listView.classList.remove('active'); if(editorView) editorView.classList.add('active'); if(form) form.reset(); if (idInput) idInput.value = persona ? persona.id : ''; if (nameInput) nameInput.value = persona ? persona.name : ''; if (descInput) descInput.value = persona ? persona.description : ''; if (editorTitle) editorTitle.textContent = persona ? '페르소나 수정' : '새 페르소나 만들기'; if (saveBtn) saveBtn.textContent = persona ? '저장하기' : '생성하기'; updateCharCounters(); };
-    const updateCharCounters = () => { if (nameInput && nameCounter) nameCounter.textContent = `${nameInput.value.length} / 50`; if (descInput && descCounter) descCounter.textContent = `${descInput.value.length} / 4000`; };
-    if (showEditorBtn) showEditorBtn.addEventListener('click', () => showEditorView());
-    if (backToListBtn) backToListBtn.addEventListener('click', showListView);
-    modal.addEventListener('click', (e) => { if (e.target === modal) { showListView(); modal.style.display = 'none'; }});
-    if (form) { form.addEventListener('submit', (e) => { e.preventDefault(); const personas = getPersonas(); const personaData = { id: idInput.value ? Number(idInput.value) : Date.now(), name: nameInput.value.trim(), description: descInput.value.trim(), active: false }; if (idInput.value) { const index = personas.findIndex(p => p.id === personaData.id); if (index !== -1) { personaData.active = personas[index].active; personas[index] = personaData; } } else { if (personas.length === 0) personaData.active = true; personas.push(personaData); } savePersonas(personas); showListView(); debouncedApplyAllInstructions(); }); }
-    if (nameInput) nameInput.addEventListener('input', updateCharCounters);
-    if (descInput) descInput.addEventListener('input', updateCharCounters);
-    if (modalBody) { modalBody.addEventListener('click', e => { const target = e.target; const personaItem = target.closest('.reppley-persona-item'); if (!personaItem) return; const id = Number(personaItem.dataset.id); let personas = getPersonas(); if (target.closest('.reppley-persona-edit-btn')) { const personaToEdit = personas.find(p => p.id === id); if(personaToEdit) showEditorView(personaToEdit); } else if (target.closest('.reppley-persona-delete-btn')) { if (confirm('정말로 이 페르소나를 삭제하시겠습니까?')) { const wasActive = personaItem.classList.contains('is-active'); personas = personas.filter(p => p.id !== id); if (wasActive && personas.length > 0) { personas[0].active = true; } savePersonas(personas); renderPersonaList(); debouncedApplyAllInstructions(); } } else { personas.forEach(p => p.active = (p.id === id)); savePersonas(personas); renderPersonaList(); debouncedApplyAllInstructions(); } }); }
+function createAdvancedPersonaUI() {
+  if (document.getElementById('reppley-persona-modal')) return;
+
+  // ⬇ 모달 HTML 삽입
+  const modalHTML = `
+    <div id="reppley-persona-modal" class="reppley-persona-modal-overlay">
+      <div class="reppley-persona-modal-panel">
+        <div id="reppley-persona-list-view" class="reppley-persona-view active">
+          <div class="reppley-persona-modal-header">
+            <div class="title">
+              <span class="material-symbols-outlined back-btn" style="opacity:0; pointer-events:none;">arrow_back</span>
+              페르소나 설정
+            </div>
+            <div id="reppley-show-editor-btn" class="new-persona-btn">+ 새로운 페르소나</div>
+          </div>
+          <div class="reppley-persona-modal-body">
+            <div class="reppley-persona-section-title">현재 사용 중</div>
+            <div id="reppley-active-persona-container"></div>
+            <div class="reppley-persona-section-title" style="margin-top: 24px;">다른 페르소나</div>
+            <div id="reppley-other-personas-container"></div>
+          </div>
+        </div>
+        <div id="reppley-persona-editor-view" class="reppley-persona-view">
+          <div class="reppley-persona-modal-header">
+            <div class="title">
+              <span id="reppley-back-to-list-btn" class="material-symbols-outlined back-btn">arrow_back</span>
+              <span id="reppley-editor-title"></span>
+            </div>
+          </div>
+          <div class="reppley-persona-modal-body">
+            <form id="reppley-persona-editor-form">
+              <input type="hidden" id="reppley-persona-id-input" />
+              <div class="reppley-persona-input-group">
+                <label for="reppley-persona-name-input">이름</label>
+                <input id="reppley-persona-name-input" type="text" maxlength="50" required />
+                <div class="char-counter" id="reppley-name-char-counter"></div>
+              </div>
+              <div class="reppley-persona-input-group">
+                <label for="reppley-persona-desc-input">설명</label>
+                <textarea id="reppley-persona-desc-input" maxlength="4000" required></textarea>
+                <div class="char-counter" id="reppley-desc-char-counter"></div>
+              </div>
+              <button type="submit" id="reppley-persona-save-edit-btn"></button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+  const modal = document.getElementById('reppley-persona-modal');
+  if (!modal) return;
+
+  // DOM 요소 참조
+  const listView = document.getElementById('reppley-persona-list-view'),
+        editorView = document.getElementById('reppley-persona-editor-view'),
+        showEditorBtn = document.getElementById('reppley-show-editor-btn'),
+        backToListBtn = document.getElementById('reppley-back-to-list-btn'),
+        form = document.getElementById('reppley-persona-editor-form'),
+        idInput = document.getElementById('reppley-persona-id-input'),
+        nameInput = document.getElementById('reppley-persona-name-input'),
+        descInput = document.getElementById('reppley-persona-desc-input'),
+        editorTitle = document.getElementById('reppley-editor-title'),
+        saveBtn = document.getElementById('reppley-persona-save-edit-btn'),
+        nameCounter = document.getElementById('reppley-name-char-counter'),
+        descCounter = document.getElementById('reppley-desc-char-counter'),
+        modalBody = modal.querySelector('.reppley-persona-modal-body');
+
+  // ✅ 스크롤 가능하도록 스타일 적용
+  if (modalBody) {
+    modalBody.style.maxHeight = '70vh';
+    modalBody.style.overflowY = 'auto';
+    modalBody.style.paddingRight = '8px';
   }
+
+  // 뷰 전환 함수들
+  const showListView = () => {
+    if (listView) listView.classList.add('active');
+    if (editorView) editorView.classList.remove('active');
+    renderPersonaList();
+  };
+
+  const showEditorView = (persona = null) => {
+    if (listView) listView.classList.remove('active');
+    if (editorView) editorView.classList.add('active');
+    if (form) form.reset();
+    if (idInput) idInput.value = persona ? persona.id : '';
+    if (nameInput) nameInput.value = persona ? persona.name : '';
+    if (descInput) descInput.value = persona ? persona.description : '';
+    if (editorTitle) editorTitle.textContent = persona ? '페르소나 수정' : '새 페르소나 만들기';
+    if (saveBtn) saveBtn.textContent = persona ? '저장하기' : '생성하기';
+    updateCharCounters();
+  };
+
+  const updateCharCounters = () => {
+    if (nameInput && nameCounter) nameCounter.textContent = `${nameInput.value.length} / 50`;
+    if (descInput && descCounter) descCounter.textContent = `${descInput.value.length} / 4000`;
+  };
+
+  // 이벤트 연결
+  if (showEditorBtn) showEditorBtn.addEventListener('click', () => showEditorView());
+  if (backToListBtn) backToListBtn.addEventListener('click', showListView);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      showListView();
+      modal.style.display = 'none';
+    }
+  });
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const personas = getPersonas();
+      const personaData = {
+        id: idInput.value ? Number(idInput.value) : Date.now(),
+        name: nameInput.value.trim(),
+        description: descInput.value.trim(),
+        active: false
+      };
+
+      if (idInput.value) {
+        const index = personas.findIndex(p => p.id === personaData.id);
+        if (index !== -1) {
+          personaData.active = personas[index].active;
+          personas[index] = personaData;
+        }
+      } else {
+        if (personas.length === 0) personaData.active = true;
+        personas.push(personaData);
+      }
+
+      savePersonas(personas);
+      showListView();
+      debouncedApplyAllInstructions();
+    });
+  }
+
+  if (nameInput) nameInput.addEventListener('input', updateCharCounters);
+  if (descInput) descInput.addEventListener('input', updateCharCounters);
+
+  if (modalBody) {
+    modalBody.addEventListener('click', e => {
+      const target = e.target;
+      const personaItem = target.closest('.reppley-persona-item');
+      if (!personaItem) return;
+      const id = Number(personaItem.dataset.id);
+      let personas = getPersonas();
+
+      if (target.closest('.reppley-persona-edit-btn')) {
+        const personaToEdit = personas.find(p => p.id === id);
+        if (personaToEdit) showEditorView(personaToEdit);
+      } else if (target.closest('.reppley-persona-delete-btn')) {
+        if (confirm('정말로 이 페르소나를 삭제하시겠습니까?')) {
+          const wasActive = personaItem.classList.contains('is-active');
+          personas = personas.filter(p => p.id !== id);
+          if (wasActive && personas.length > 0) {
+            personas[0].active = true;
+          }
+          savePersonas(personas);
+          renderPersonaList();
+          debouncedApplyAllInstructions();
+        }
+      } else {
+        personas.forEach(p => p.active = (p.id === id));
+        savePersonas(personas);
+        renderPersonaList();
+        debouncedApplyAllInstructions();
+      }
+    });
+  }
+}
+
 
   function renderPersonaList() {
     const personas = getPersonas(); const activeContainer = document.getElementById('reppley-active-persona-container'); const othersContainer = document.getElementById('reppley-other-personas-container'); if (!activeContainer || !othersContainer) return; activeContainer.innerHTML = ''; othersContainer.innerHTML = '';
@@ -974,7 +1137,7 @@ Rules:
                 <div id="tab-detailed-settings" class="creator-tab-content">
                     <div class="creator-form-section">
                         <label class="required">프롬프트</label>
-                        <textarea id="creator-prompt" placeholder="캐릭터의 특징, 성격, 배경, 이야기 등을 작성해주세요." style="height: 400px;" maxlength="8000"></textarea>
+                        <textarea id="creator-prompt" placeholder="캐릭터의 특징, 성격, 배경, 이야기 등을 작성해주세요." style="height: 400px;" maxlength="100000"></textarea>
                     </div>
                 </div>
             </div>
