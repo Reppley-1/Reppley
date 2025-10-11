@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Reppley",
-  "version": "1.0",
+  "version": "1.4",
   "description": "Alpha Ver",
   "permissions": [
     "activeTab",
@@ -15,7 +15,9 @@
       "js": [
         "Content.js",
         "Memory.js",
-        "image.js"
+        "image.js",
+        "first.js",
+        "start_setting.js"
       ]
     }
   ],
