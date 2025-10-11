@@ -14,7 +14,8 @@
       ],
       "js": [
         "Content.js",
-        "Memory.js" 
+        "Memory.js",
+        "image.js"
       ]
     }
   ],
