@@ -2,8 +2,9 @@
   // 스크립트 중복 실행 방지
   if (window.hasReppleyMemoryScriptRun) return;
   window.hasReppleyMemoryScriptRun = true;
+  window.reppley = window.reppley || {};
 
-  // Type 1 실시간 업데이트 인터벌 ID
+  // Type 1 실시간 업데이트 인터벌 ID (이제는 사용되지 않음)
   let historyUpdateInterval = null;
 
   // Type 2 Gemini API 요약 요청 프롬프트 (영문 요약 지시)
@@ -13,62 +14,55 @@
   const getActiveMemoryType = () => localStorage.getItem('reppley_memory_active_type_v3') || 'type2';
   const setActiveMemoryType = (type) => localStorage.setItem('reppley_memory_active_type_v3', type);
   
-  // Gemini API 관련 설정 저장
   const getGoogleApiKey = () => localStorage.getItem('reppley_google_api_key_v1') || "";
   const saveGoogleApiKey = (key) => localStorage.setItem('reppley_google_api_key_v1', key);
   
-  const getGeminiModel = () => localStorage.getItem('reppley_gemini_model_v1') || "gemini-2.0-flash-001"; 
+  const getGeminiModel = () => localStorage.getItem('reppley_gemini_model_v1') || "gemini-1.5-flash-latest"; 
   const saveGeminiModel = (model) => localStorage.setItem('reppley_gemini_model_v1', model);
 
-  // ✨ [수정] 생성된 요약들을 배열 형태로 저장
   const getGeminiSummaries = () => JSON.parse(localStorage.getItem('reppley_gemini_summaries_v1') || '[]') || [];
   const saveGeminiSummaries = (summaries) => localStorage.setItem('reppley_gemini_summaries_v1', JSON.stringify(summaries));
 
-  // ✨ [추가] 프롬프트에 적용될 가장 최신 요약 내용을 가져오는 함수
   const getLatestGeminiSummary = () => {
       const summaries = getGeminiSummaries();
       if (summaries.length === 0) return "";
-      return summaries[summaries.length - 1].text; // 배열의 마지막 요소(가장 최근)의 텍스트 반환
+      return summaries[summaries.length - 1].text;
   };
 
   // --- 2. 핵심 로직 ---
 
-  const applyActiveMemory = () => {
-    const instructionTextArea = document.querySelector('ms-system-instructions textarea');
-    if (!instructionTextArea) return;
-    if (document.activeElement === instructionTextArea) return;
-
+  // ✨ [수정] content.js가 호출할 메모리 블록 제공 함수
+  function getMemoryBlock() {
     const activeType = getActiveMemoryType();
-    const allMemoryMarkersRegex = /--- \[Reppley (Full History|Gemini Summary) Memory Applied\] ---[\s\S]*?--- \[Reppley (Full History|Gemini Summary) Memory End\] ---\n*/g;
-
-    let promptWithoutMemory = instructionTextArea.value.replace(allMemoryMarkersRegex, '');
-    let finalPrompt = promptWithoutMemory;
+    let memoryBlock = "";
 
     if (activeType === 'type1') {
       const historyLog = gatherConversationHistory();
       if (historyLog) {
-        finalPrompt = `--- [Reppley Full History Memory Applied] ---\n# Full Conversation History:\n${historyLog}\n--- [Reppley Full History Memory End] ---\n\n` + promptWithoutMemory;
+        memoryBlock = `--- [Reppley Full History Memory Applied] ---\n# Full Conversation History:\n${historyLog}\n--- [Reppley Full History Memory End] ---`;
       }
     } else { // type2
-      const summaryContent = getLatestGeminiSummary(); // ✨ [수정] 가장 최신 요약 가져옴
+      const summaryContent = getLatestGeminiSummary();
       if (summaryContent) {
-        finalPrompt = `--- [Reppley Gemini Summary Memory Applied] ---\n# Conversation Summary (English):\n${summaryContent}\n--- [Reppley Gemini Summary Memory End] ---\n\n` + promptWithoutMemory;
+        memoryBlock = `--- [Reppley Gemini Summary Memory Applied] ---\n# Conversation Summary (English):\n${summaryContent}\n--- [Reppley Gemini Summary Memory End] ---`;
       }
     }
+    return memoryBlock;
+  }
+  // 전역 reppley 객체에 함수 등록
+  window.reppley.getMemoryBlock = getMemoryBlock;
 
-    const cleanedFinalPrompt = finalPrompt.trim().replace(/\n{3,}/g, '\n\n');
-    if (instructionTextArea.value !== cleanedFinalPrompt) {
-      instructionTextArea.value = cleanedFinalPrompt;
-      instructionTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-      instructionTextArea.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  };
-
+  // ✨ [수정] 이제 이 함수는 실시간 업데이트 인터벌을 켜고 끄는 역할만 합니다.
   function manageHistoryInterval() {
     if (historyUpdateInterval) clearInterval(historyUpdateInterval);
     historyUpdateInterval = null;
     if (getActiveMemoryType() === 'type1') {
-      historyUpdateInterval = setInterval(applyActiveMemory, 1000);
+      // Type 1일 때만 1초마다 content.js의 업데이트 함수를 호출하도록 요청
+      historyUpdateInterval = setInterval(() => {
+        if (window.reppley && window.reppley.updateSystemInstructions) {
+          window.reppley.updateSystemInstructions();
+        }
+      }, 1000);
     }
   }
 
@@ -83,10 +77,6 @@
     return historyLog.length > 0 ? historyLog.join('\n') : null;
   }
 
-  /**
-   * Gemini API를 호출하여 대화 요약을 생성하고 저장합니다.
-   * ✨ [수정] 새로운 요약을 리스트에 추가합니다.
-   */
   async function generateAndSaveGeminiSummary() {
     const apiKey = getGoogleApiKey();
     const model = getGeminiModel();
@@ -135,15 +125,18 @@
 
       const currentSummaries = getGeminiSummaries();
       currentSummaries.push({
-          id: Date.now(), // 고유 ID
-          timestamp: new Date().toLocaleString(), // 생성 시각
+          id: Date.now(),
+          timestamp: new Date().toLocaleString(),
           text: summary.trim()
       });
-      saveGeminiSummaries(currentSummaries); // ✨ [수정] 전체 리스트 저장
+      saveGeminiSummaries(currentSummaries);
 
       alert("대화의 영문 요약이 생성되어 저장되었습니다.");
-      updateMemoryModalUI(); // UI 업데이트
-      applyActiveMemory(); // 프롬프트에 즉시 적용
+      updateMemoryModalUI();
+      
+      if (window.reppley && window.reppley.updateSystemInstructions) {
+        window.reppley.updateSystemInstructions();
+      }
     } catch (error) {
       console.error("Gemini Summary Error:", error);
       alert(`요약 생성에 실패했습니다: ${error.message}`);
@@ -153,7 +146,6 @@
     }
   }
 
-  // ✨ [추가] 특정 요약을 업데이트하는 함수
   function updateSummary(id, newText) {
       const summaries = getGeminiSummaries();
       const index = summaries.findIndex(s => s.id === id);
@@ -162,25 +154,28 @@
           summaries[index].timestamp = new Date().toLocaleString() + ' (수정됨)';
           saveGeminiSummaries(summaries);
           updateMemoryModalUI();
-          applyActiveMemory();
+          if (window.reppley && window.reppley.updateSystemInstructions) {
+              window.reppley.updateSystemInstructions();
+          }
           alert('요약이 수정되었습니다.');
       }
   }
 
-  // ✨ [추가] 특정 요약을 삭제하는 함수
   function deleteSummary(id) {
       if (!confirm('정말로 이 요약을 삭제하시겠습니까?')) return;
-      const summaries = getGeminiSummaries();
+      // ✨ [버그 수정] getPersonas()가 아니라 getGeminiSummaries()를 호출해야 합니다.
+      const summaries = getGeminiSummaries(); 
       const updatedSummaries = summaries.filter(s => s.id !== id);
       saveGeminiSummaries(updatedSummaries);
       updateMemoryModalUI();
-      applyActiveMemory();
+      if (window.reppley && window.reppley.updateSystemInstructions) {
+          window.reppley.updateSystemInstructions();
+      }
       alert('요약이 삭제되었습니다.');
   }
 
   // --- 3. UI 생성 및 관리 ---
 
-  // ✨ [추가] 요약 수정 모달 상태 관리를 위한 변수
   let currentEditingSummaryId = null;
 
   function createMemoryModal() {
@@ -215,16 +210,15 @@
                <div class="reppley-persona-input-group" style="margin-top: 16px;">
                   <label for="reppley-gemini-model-select">AI 모델 선택</label>
                   <select id="reppley-gemini-model-select" class="creator-form-section select">
-                      <option value="gemini-2.0-flash-001">Gemini 2.0 Flash (빠름, 비정확)</option>
+                      <option value="gemini-2.0-flash">Gemini 2.0 Flash (빠름, 비권장)</option>
                       <option value="gemini-2.5-flash">Gemini 2.5 Flash (빠름, 권장)</option>
-                      <option value="gemini-2.5-pro">Gemini 2.5 Pro (느림, 정확)</option>
+		      <option value="gemini-2.5-pro">Gemini 2.5 Pro (느림, 정확)</option>
                   </select>
               </div>
 
               <h3 style="font-size: 16px; color: #bdc1c6; border-bottom: 1px solid #3c4043; padding-bottom: 8px; margin-top: 24px;">저장된 영문 요약 목록</h3>
               <div id="reppley-summaries-list-container" style="background-color: #282a2d; padding: 12px; border-radius: 8px; max-height: 250px; overflow-y: auto; margin-top: 12px; color: #9aa0a6;">
                   <div id="reppley-summaries-list">
-                      <!-- 요약 항목들이 동적으로 추가됩니다. -->
                       <p style="font-size: 14px; text-align: center;">저장된 요약이 없습니다.</p>
                   </div>
               </div>
@@ -232,7 +226,6 @@
           </div>
         </div>
       </div>
-      <!-- ✨ [추가] 요약 수정 전용 모달 -->
       <div id="reppley-summary-edit-modal" class="reppley-note-modal-overlay">
           <div class="reppley-note-modal-content">
               <h2>영문 요약 수정</h2>
@@ -251,18 +244,24 @@
 
     document.getElementById('reppley-memory-type1-btn').addEventListener('click', () => {
       setActiveMemoryType('type1');
-      applyActiveMemory();
       manageHistoryInterval();
       updateMemoryModalUI();
+      if (window.reppley && window.reppley.updateSystemInstructions) {
+        window.reppley.updateSystemInstructions();
+      }
       alert('장기 기억이 [Type 1: 전체 대화 기록 (실시간)]으로 설정되었습니다.');
       modal.style.display = 'none';
     });
+
     document.getElementById('reppley-memory-type2-btn').addEventListener('click', () => {
       setActiveMemoryType('type2');
       manageHistoryInterval();
-      applyActiveMemory();
       updateMemoryModalUI();
+      if (window.reppley && window.reppley.updateSystemInstructions) {
+        window.reppley.updateSystemInstructions();
+      }
     });
+
     document.getElementById('reppley-generate-summary-btn').addEventListener('click', generateAndSaveGeminiSummary);
     
     let apiKeyDebounce;
@@ -274,7 +273,6 @@
         saveGeminiModel(e.target.value);
     });
 
-    // ✨ [추가] 요약 리스트의 이벤트 리스너 (수정/삭제 버튼)
     document.getElementById('reppley-summaries-list-container').addEventListener('click', (e) => {
         const editBtn = e.target.closest('.reppley-summary-edit-btn');
         const deleteBtn = e.target.closest('.reppley-summary-delete-btn');
@@ -284,7 +282,7 @@
             const summaries = getGeminiSummaries();
             const summaryToEdit = summaries.find(s => s.id === summaryId);
             if (summaryToEdit) {
-                currentEditingSummaryId = summaryId; // 수정 중인 요약 ID 저장
+                currentEditingSummaryId = summaryId;
                 const editModal = document.getElementById('reppley-summary-edit-modal');
                 editModal.querySelector('#reppley-edit-summary-textarea').value = summaryToEdit.text;
                 editModal.style.display = 'flex';
@@ -295,7 +293,6 @@
         }
     });
 
-    // ✨ [추가] 요약 수정 모달의 저장/취소 버튼 이벤트
     const editSummaryModal = document.getElementById('reppley-summary-edit-modal');
     editSummaryModal.addEventListener('click', (e) => { if (e.target === editSummaryModal) editSummaryModal.style.display = 'none'; });
     editSummaryModal.querySelector('#reppley-edit-summary-close-btn').addEventListener('click', () => { editSummaryModal.style.display = 'none'; });
@@ -304,17 +301,13 @@
         if (currentEditingSummaryId !== null && newText) {
             updateSummary(currentEditingSummaryId, newText);
             editSummaryModal.style.display = 'none';
-            currentEditingSummaryId = null; // 수정 완료 후 ID 초기화
+            currentEditingSummaryId = null;
         } else {
             alert('수정된 요약 내용이 비어있을 수 없습니다.');
         }
     });
   }
 
-  /**
-   * 메인 버튼과 모달 UI를 현재 설정에 맞게 업데이트합니다.
-   * ✨ [수정] 요약 리스트를 렌더링하고 스크롤을 맨 아래로 이동시킵니다.
-   */
   function updateMemoryModalUI() {
     const memoryButton = document.querySelector('#reppley-memory-settings-container button');
     if (!memoryButton) return;
@@ -325,7 +318,7 @@
     const type1Btn = document.getElementById('reppley-memory-type1-btn');
     const type2Btn = document.getElementById('reppley-memory-type2-btn');
     const geminiSection = document.getElementById('reppley-gemini-settings-section');
-    const summariesListDiv = document.getElementById('reppley-summaries-list'); // ✨ [추가] 리스트 컨테이너
+    const summariesListDiv = document.getElementById('reppley-summaries-list');
 
     type1Btn.classList.toggle('is-active', activeType === 'type1');
     type2Btn.classList.toggle('is-active', activeType === 'type2');
@@ -336,7 +329,6 @@
       document.getElementById('reppley-api-key-input').value = getGoogleApiKey();
       document.getElementById('reppley-gemini-model-select').value = getGeminiModel();
       
-      // ✨ [수정] 요약 리스트 렌더링
       const summaries = getGeminiSummaries();
       if (summaries.length > 0) {
           summariesListDiv.innerHTML = summaries.map(s => `
@@ -351,7 +343,6 @@
                   </div>
               </div>
           `).join('');
-          // ✨ [추가] 스크롤을 맨 아래로 이동
           const summariesListContainer = document.getElementById('reppley-summaries-list-container');
           if (summariesListContainer) {
               summariesListContainer.scrollTop = summariesListContainer.scrollHeight;
@@ -386,19 +377,14 @@
   // --- 4. 메인 실행 및 감시 로직 ---
 
   createMemoryModal();
-  const debouncedApplyActiveMemory = () => setTimeout(applyActiveMemory, 150);
-
+  
+  // ✨ [수정] MutationObserver는 이제 버튼 주입 역할만 담당합니다.
   const observer = new MutationObserver((mutations) => {
     mutations.forEach(mutation => {
       mutation.addedNodes.forEach(node => {
         if (node.nodeType !== 1) return;
-        if (node.querySelector('#reppley-impersonation-toggle-container')) injectMemoryButton();
-        const instructionTextArea = node.querySelector('ms-system-instructions textarea');
-        if (instructionTextArea && !instructionTextArea.dataset.memoryListenerAttached) {
-          instructionTextArea.dataset.memoryListenerAttached = 'true';
-          instructionTextArea.addEventListener('input', debouncedApplyActiveMemory);
-          applyActiveMemory();
-          manageHistoryInterval();
+        if (node.querySelector('#reppley-impersonation-toggle-container')) {
+          injectMemoryButton();
         }
       });
     });
@@ -406,5 +392,8 @@
 
   observer.observe(document.body, { childList: true, subtree: true });
 
-  console.log("Reppley Memory Module");
+  // 페이지 로드 시 초기 상태에 맞게 인터벌 설정
+  manageHistoryInterval();
+
+  console.log("Reppley Memory Script 1.4 (Final Fix) Start");
 })();

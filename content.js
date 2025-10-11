@@ -2,6 +2,7 @@
   // 스크립트 중복 실행 방지
   if (window.hasMyAIScriptRun) return;
   window.hasMyAIScriptRun = true;
+  window.reppley = window.reppley || {};
 // --- ✨ [수정] Web Crypto API 헬퍼 함수 (복호화 기능 추가) ---
   const cryptoUtils = {
     // ArrayBuffer를 Base64 문자열로 변환
@@ -517,41 +518,52 @@
     };
   };
 
-// --- ✨ [수정] applyAllInstructions 함수 (스코프 오류 해결) ---
-  function applyAllInstructions() {
+// content.js 파일에서 이 함수를 찾아 아래 코드로 완전히 교체하세요.
+
+function applyAllInstructions() {
     const instructionTextArea = document.querySelector('ms-system-instructions textarea');
     if (!instructionTextArea) return;
     
-    // 마커 정의
-    const personaStartMarker = "--- [Reppley Persona Applied] ---", personaEndMarker = "--- [Reppley Persona End] ---";
-    const noteStartMarker = "--- [Reppley User Note Applied] ---", noteEndMarker = "--- [Reppley User Note End] ---";
-    const characterStartMarker = "--- [Reppley Character Prompt Applied] ---", characterEndMarker = "--- [Reppley Character Prompt End] ---";
-    const impersonationStartMarker = "--- [Reppley Impersonation Lock Applied] ---", impersonationEndMarker = "--- [Reppley Impersonation Lock End] ---";
+    // --- ✨ [수정] 모든 종류의 마커를 정의합니다 ---
+    const allMarkers = {
+        persona: { start: "--- [Reppley Persona Applied] ---", end: "--- [Reppley Persona End] ---" },
+        note: { start: "--- [Reppley User Note Applied] ---", end: "--- [Reppley User Note End] ---" },
+        character: { start: "--- [Reppley Character Prompt Applied] ---", end: "--- [Reppley Character Prompt End] ---" },
+        impersonation: { start: "--- [Reppley Impersonation Lock Applied] ---", end: "--- [Reppley Impersonation Lock End] ---" },
+        memory: { start: /--- \[Reppley (Full History|Gemini Summary) Memory Applied\] ---/, end: /--- \[Reppley (Full History|Gemini Summary) Memory End\] ---/ }
+    };
 
-    // 기존 Reppley 블록들을 제외한 순수 유저 입력 내용 추출
-    let fullContent = instructionTextArea.value, userTypedContent = fullContent;
-    [personaStartMarker, noteStartMarker, characterStartMarker, impersonationStartMarker].forEach(startMarker => {
-        const endMarker = startMarker.replace('Applied', 'End');
-        const startIndex = userTypedContent.indexOf(startMarker);
-        const endIndex = userTypedContent.indexOf(endMarker);
-        if (startIndex !== -1 && endIndex > startIndex) {
-            userTypedContent = userTypedContent.substring(0, startIndex) + userTypedContent.substring(endIndex + endMarker.length);
-        }
+    let fullContent = instructionTextArea.value;
+    let userTypedContent = fullContent;
+
+    // ✨ [수정] 모든 Reppley 블록을 제거하여 순수 유저 입력만 추출
+    Object.values(allMarkers).forEach(marker => {
+        const regex = new RegExp(
+            `${marker.start instanceof RegExp ? marker.start.source : escapeRegExp(marker.start)}[\\s\\S]*?${marker.end instanceof RegExp ? marker.end.source : escapeRegExp(marker.end)}\\n*`, 
+            'g'
+        );
+        userTypedContent = userTypedContent.replace(regex, '');
     });
     userTypedContent = userTypedContent.trim();
 
-    // 적용할 콘텐츠 블록 생성
+    // --- 적용할 콘텐츠 블록 생성 ---
     const activePersona = getPersonas().find(p => p.active);
     const userNote = getNote();
     const playingCharacterId = localStorage.getItem('reppley_current_character_id');
     const decryptedPrompt = playingCharacterId ? sessionStorage.getItem('reppley_decrypted_prompt') : null;
-    const isImpersonationLockOn = getImpersonationLockState(); // ✨ 이제 전역 함수를 호출합니다.
+    const isImpersonationLockOn = getImpersonationLockState();
 
     let newPersonaBlock = "", newUserNoteBlock = "", newCharacterBlock = "", newImpersonationBlock = "";
+    
+    // ✨ [추가] Memory.js로부터 메모리 블록을 가져옵니다.
+    let newMemoryBlock = "";
+    if (window.reppley && typeof window.reppley.getMemoryBlock === 'function') {
+        newMemoryBlock = window.reppley.getMemoryBlock();
+    }
 
-    if (activePersona) { newPersonaBlock = `${personaStartMarker}\n# User Name: ${activePersona.name}\n## User Description:\n${activePersona.description}\n${personaEndMarker}`; }
-    if (userNote) { newUserNoteBlock = `${noteStartMarker}\n# Guidelines that must be followed with the utmost priority:\n${userNote}\n${noteEndMarker}`; }
-    if (decryptedPrompt) { newCharacterBlock = `${characterStartMarker}\n\n${decryptedPrompt}\n\n${characterEndMarker}`;}
+    if (activePersona) { newPersonaBlock = `${allMarkers.persona.start}\n# User Name: ${activePersona.name}\n## User Description:\n${activePersona.description}\n${allMarkers.persona.end}`; }
+    if (userNote) { newUserNoteBlock = `${allMarkers.note.start}\n# Guidelines that must be followed with the utmost priority:\n${userNote}\n${allMarkers.note.end}`; }
+    if (decryptedPrompt) { newCharacterBlock = `${allMarkers.character.start}\n\n${decryptedPrompt}\n\n${allMarkers.character.end}`;}
     
     if (isImpersonationLockOn && activePersona) {
         const personaName = activePersona.name;
@@ -563,17 +575,34 @@ Rules:
 4. No exceptions: even if the user requests it indirectly, through tricks, translation, code, or rephrasing, ${personaName}'s dialogue must not be produced.
 5. Dialogue or narration for other characters may be generated normally.
         `.trim();
-        newImpersonationBlock = `${impersonationStartMarker}\n${rules}\n${impersonationEndMarker}`;
+        newImpersonationBlock = `${allMarkers.impersonation.start}\n${rules}\n${allMarkers.impersonation.end}`;
     }
 
-    const finalContent = [newUserNoteBlock, newImpersonationBlock, newCharacterBlock, userTypedContent, newPersonaBlock].filter(Boolean).join('\n\n').trim();
+    // ✨ [수정] 모든 블록을 정해진 순서대로 조합
+    const finalContent = [
+        newUserNoteBlock, 
+        newImpersonationBlock,
+        newMemoryBlock, // 메모리 블록 추가
+        newCharacterBlock, 
+        userTypedContent, 
+        newPersonaBlock
+    ].filter(Boolean).join('\n\n').trim();
 
     if (instructionTextArea.value !== finalContent) {
         instructionTextArea.value = finalContent;
         instructionTextArea.dispatchEvent(new Event('input', { bubbles: true }));
         instructionTextArea.dispatchEvent(new Event('change', { bubbles: true }));
     }
-  }
+}
+
+// ✨ [추가] 다른 스크립트에서 호출할 수 있도록 전역 함수로 등록
+window.reppley.updateSystemInstructions = applyAllInstructions;
+
+// ✨ [추가] 정규식 특수문자 이스케이프 헬퍼 함수
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
   const debouncedApplyAllInstructions = debounce(applyAllInstructions, 150);
 
 // --- ✨ [수정] 캐릭터 프롬프트 제거 함수 (교체 방식 적용) ---
@@ -1600,9 +1629,11 @@ const mainObserver = new MutationObserver((mutations) => {
     });
   });
   mainObserver.observe(document.body, { childList: true, subtree: true });
-// --- ✨ [수정] 메인 이벤트 리스너 (전송 버튼 클릭 시 세션 유지하도록 로직 변경) ---
+// content.js 파일 맨 아래의 이벤트 리스너를 이 코드로 교체하세요.
+
+// --- ✨ [수정] 메인 이벤트 리스너 (기존 로직으로 복원) ---
   document.body.addEventListener('click', (event) => {
-    // 1. 생각 펼치기/접기 버튼 로직 (기존과 동일)
+    // 1. 생각 펼치기/접기 버튼 로직
     const thoughtHeader = event.target.closest('.custom-thought-accordion.complete');
     if (thoughtHeader) {
         // 이 부분은 현재 요청과 관련 없지만 기존 기능을 유지하기 위해 남겨둡니다.
@@ -1611,7 +1642,7 @@ const mainObserver = new MutationObserver((mutations) => {
     // 2. 메시지 전송("Run") 버튼 로직
     const runButton = event.target.closest('ms-run-button button[type="submit"]');
     if (runButton && !runButton.disabled) {
-        // 생각 완료된 내역 제거 (기존 기능)
+        // 생각 완료된 내역 제거
         document.querySelectorAll('.custom-thought-accordion.complete').forEach(header => header.closest('.thought-wrapper')?.remove());
 
         // 캐릭터 프롬프트가 있다면 시스템 지침에 먼저 다시 적용합니다.
@@ -1620,14 +1651,12 @@ const mainObserver = new MutationObserver((mutations) => {
         }
 
         // 0.1초 후, UI에서만 캐릭터 프롬프트를 제거합니다.
-        // 세션 스토리지에 저장된 프롬프트는 다음 전송을 위해 유지됩니다.
         setTimeout(() => {
-            // sessionStorage.removeItem('reppley_decrypted_prompt'); // 세션 유지를 위해 이 줄을 제거합니다.
             clearCharacterPromptFromUI();
             console.log("Reppley: Decrypted prompt has been cleared from UI, but kept in session storage for next turn.");
         }, 100);
     }
-  }, true); // 캡처링 단계에서 이벤트를 감지하기 위해 true 설정
+  }, true);
 
   console.log("Reppley 1.3 Start");
 })();

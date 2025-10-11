@@ -14,9 +14,9 @@
       ],
       "js": [
         "Content.js",
-        "Memory.js",
         "image.js",
         "first.js",
+        "Memory.js",
         "start_setting.js"
       ]
     }
