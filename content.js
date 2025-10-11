@@ -1482,7 +1482,6 @@ function createAdvancedPersonaUI() {
             if (spans.length >= 3) {
                 spans[0].innerHTML = '유저 사칭 방지 <span class="toggle-status"></span>';
                 spans[1].textContent = 'AI가 현재 페르소나를 사칭하여 말하는 것을 금지합니다.';
-                spans[2].textContent = '클릭하여 ON/OFF 할 수 있습니다.';
             }
             toggleButton.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -1638,5 +1637,5 @@ const mainObserver = new MutationObserver((mutations) => {
     }
   }, true); // 캡처링 단계에서 이벤트를 감지하기 위해 true 설정
 
-  console.log("Reppley 1.2 Start");
+  console.log("Reppley 1.3 Start");
 })();
